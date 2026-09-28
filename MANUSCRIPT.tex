@@ -7,7 +7,7 @@
 \usepackage{geometry}
 \geometry{a4paper, margin=1in}
 
-\title{MtbRx: An interactive web-based interface for visual exploration of the WHO Mycobacterium tuberculosis drug resistance catalogue}
+\title{DR-TBAtlas: An interactive web-based interface for visual exploration of the WHO Mycobacterium tuberculosis drug resistance catalogue}
 \author{Fernando Falat Rangel\thanks{Corresponding author: \href{mailto:fernandofalat@proton.me}{fernandofalat@proton.me}} \and Ana Marcia de S\'a Guimar\~aes}
 \date{\today}
 
@@ -19,13 +19,13 @@
 \noindent\textbf{Background:} The rise of multi-drug resistant tuberculosis (MDR-TB) necessitates rapid and accurate genomic interpretation. The World Health Organization (WHO) compiled a comprehensive catalogue of resistance-associated mutations in \textit{Mycobacterium tuberculosis}, but the raw, text-based tables present a high barrier of entry for clinical and public health workers lacking bioinformatics expertise.
 
 \medskip
-\noindent\textbf{Objective:} We developed MtbRx, an interactive, web-based graphical user interface designed to bridge this gap by enabling gene-centric visual exploration of the WHO drug resistance mutation catalogue without requiring programming or raw sequence analysis.
+\noindent\textbf{Objective:} We developed DR-TBAtlas, an interactive, web-based graphical user interface designed to bridge this gap by enabling gene-centric visual exploration of the WHO drug resistance mutation catalogue without requiring programming or raw sequence analysis.
 
 \medskip
-\noindent\textbf{Software Features:} MtbRx is built using Python Dash and integrates the JBrowse 2 genome browser via \texttt{dash-jbrowse}. The application offers: (1) quick lookup of tuberculosis genes by name or locus tag; (2) interactive, localized genomic track visualization; (3) WHO catalogue drug resistance profiling detailing confidence levels and effect sizes; (4) a coordinate calculator for translating between gene-relative (c. or p.) and absolute genomic positions; and (5) mutation-specific genomic coordinate details.
+\noindent\textbf{Software Features:} DR-TBAtlas is built using Python Dash and integrates the JBrowse 2 genome browser via \texttt{dash-jbrowse}. The application offers: (1) quick lookup of tuberculosis genes by name or locus tag; (2) interactive, localized genomic track visualization; (3) WHO catalogue drug resistance profiling detailing confidence levels and effect sizes; (4) a coordinate calculator for translating between gene-relative (c. or p.) and absolute genomic positions; and (5) mutation-specific genomic coordinate details.
 
 \medskip
-\noindent\textbf{Significance:} By providing a localized, interactive, and dependency-light interface, MtbRx facilitates the translation of complex genomic annotations into clinical understanding. It represents an essential open-source resource for public health epidemiology, diagnostic research, and clinical laboratories, especially in low-resource settings where bioinformatic pipelines are unavailable.
+\noindent\textbf{Significance:} By providing a localized, interactive, and dependency-light interface, DR-TBAtlas facilitates the translation of complex genomic annotations into clinical understanding. It represents an essential open-source resource for public health epidemiology, diagnostic research, and clinical laboratories, especially in low-resource settings where bioinformatic pipelines are unavailable.
 \end{abstract}
 
 \clearpage
@@ -38,7 +38,7 @@ To standardize the interpretation of genetic variants, the World Health Organiza
 Existing genomic interpretation tools often require command-line interfaces or necessitate the upload of raw sequencing data (FASTQ/BAM format) to remote servers. This introduces significant concerns regarding patient data privacy, high computational overhead, and network bandwidth limitations in low- and middle-income countries where the TB burden is highest. There is a clear need for a lightweight, interactive, gene-centric graphical interface that can run locally, allowing clinicians and researchers to visualize genetic features and consult the WHO catalogue database~\cite{whocatalogue} instantaneously based on gene or variant queries.
 
 \section{Implementation}
-MtbRx is implemented using the Python programming language and leveraging the Dash web application framework~\cite{plotlydash} (v2.14.0+), which combines Flask, React, and Plotly. Visual layouts and interactive components are styled using Dash Bootstrap Components (\texttt{dash-bootstrap-components} v1.5.0+), ensuring a responsive, modern interface.
+DR-TBAtlas is implemented using the Python programming language and leveraging the Dash web application framework~\cite{plotlydash} (v2.14.0+), which combines Flask, React, and Plotly. Visual layouts and interactive components are styled using Dash Bootstrap Components (\texttt{dash-bootstrap-components} v1.5.0+), ensuring a responsive, modern interface.
 
 \subsection{Database and Data Loading Mechanism}
 The application uses local, file-based storage to minimize setup complexity and external network dependencies. According to the repository structure, it processes three primary inputs situated in the \texttt{data/} directory:
@@ -51,7 +51,7 @@ The application uses local, file-based storage to minimize setup complexity and 
 To ensure rapid queries of gene models and features, the GFF3 annotation file is parsed using the \texttt{gffutils} library~\cite{gffutils} to construct a localized, thread-safe SQLite database (\texttt{h37rv.gff3.db}). Large dataset queries for the mutation catalogue and coordinates are managed using the \texttt{pandas} library, which loads datasets into memory for fast, server-side filtering. 
 
 \subsection{Genome Browser Integration}
-Visual inspection of local genomic contexts is facilitated by an embedded genome browser component integrated via \texttt{dash-jbrowse}~\cite{jbrowse2}. The browser is configured with reference FASTA files (\texttt{h37rv.fasta}) and indexes (\texttt{h37rv.fasta.fai}). When a user searches for a specific gene, the application calculates the coordinates and instructs the client-side JBrowse component to center on the target genomic locus.
+Visual inspection of local genomic contexts is facilitated by an embedded genome browser component integrated via \texttt{dash-jbrowse}~\cite{jbrowse2}. The browser is configured with the reference FASTA file (\texttt{h37rv.fasta}) and its index (\texttt{h37rv.fasta.fai}), and with tracks derived at start-up from the annotation and the WHO catalogue: genes flattened to one feature per locus and coloured by strand and biotype, catalogue variants split by confidence grading, resistance-associated variants for each drug, catalogue genes by tier, catalogue variant density, GC content, and a track marking the current gene and mutation. Gene features link to the corresponding Mycobrowser entry, and a text index lets the browser's location box resolve gene names, locus tags, products and catalogue variants. When a user searches for a gene or selects a mutation, the application opens the browser on that locus, down to the codon of the selected mutation.
 
 \subsection{Coordinate Translation Engine}
 The core coordinate calculator maps positions between different coordinate systems:
@@ -71,24 +71,24 @@ Conversely, for genes on the negative (-) strand, the coordinates are mapped usi
 \end{equation}
 
 \section{Results and Discussion}
-MtbRx provides a unified, user-friendly workspace that eliminates the need for manual text filtering or command-line scripting. 
+DR-TBAtlas provides a unified, user-friendly workspace that eliminates the need for manual text filtering or command-line scripting. 
 
 \subsection{User Workflow}
 The workflow is designed around a single search bar where the user inputs a gene name (e.g., \textit{katG}, \textit{rpoB}) or locus tag (e.g., \textit{Rv1908c}). Upon submission:
 \begin{enumerate}
     \item \textbf{Gene Information Summary:} A card displays the selected gene's absolute coordinates, strand orientation, gene length, and description.
-    \item \textbf{Genomic Browser View:} The embedded JBrowse track visually shifts to the gene's region, enabling users to inspect surrounding genomic features.
+    \item \textbf{Genomic Browser View:} The embedded JBrowse view opens on the gene's region, with WHO catalogue variant, GC content and selection tracks, enabling users to inspect surrounding genomic features and the catalogue variants at any position.
     \item \textbf{Drug Resistance Profile Table:} The app extracts all variants associated with that gene from the WHO catalogue, listing the mutation, associated drug, clinical tier, predicted effect, and the final WHO confidence grading.
     \item \textbf{Coordinate Conversion Tool:} Users can input specific variants (e.g., \texttt{dnaA\_c.7G\textgreater{}A}) to calculate their absolute genomic coordinates, or input genomic positions to find the corresponding relative c. or p. notations.
 \end{enumerate}
 
 \subsection{Accessibility and Utility}
-By running entirely on local datasets, MtbRx guarantees patient data privacy, as no genetic data is transmitted over the internet. This feature makes it highly suited for laboratory settings with strict data compliance policies. Furthermore, the application requires minimal setup and runs efficiently on standard laptop hardware, ensuring high accessibility for clinical settings in low-resource environments. 
+By running entirely on local datasets, DR-TBAtlas guarantees patient data privacy, as no genetic data is transmitted over the internet. This feature makes it highly suited for laboratory settings with strict data compliance policies. Furthermore, the application requires minimal setup and runs efficiently on standard laptop hardware, ensuring high accessibility for clinical settings in low-resource environments. 
 
 \section{Availability and Requirements}
 \begin{itemize}
-    \item \textbf{Project name:} MtbRx
-    \item \textbf{Project home page:} \url{https://github.com/falatfernando/mtbrx}
+    \item \textbf{Project name:} DR-TBAtlas
+    \item \textbf{Project home page:} \url{https://github.com/falatfernando/dr-tbatlas}
     \item \textbf{Operating system(s):} Platform independent (Linux, macOS, Windows)
     \item \textbf{Programming language:} Python (version 3.8 or higher)
     \item \textbf{License:} GNU General Public License v3.0

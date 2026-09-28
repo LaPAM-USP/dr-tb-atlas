@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-28
+
+### Changed
+- **Renamed the project from MtbRx to DR-TBAtlas.** The application title,
+  hero banner, footer, citation text and BibTeX key (`falat_drtbatlas`),
+  `CITATION.cff`, manuscript, preprint abstract, README, contributing guide
+  and package name (`dr-tbatlas`) all use the new name, and the repository
+  URL is now `github.com/falatfernando/dr-tbatlas`.
+- The hero banner shows the DR-TBAtlas logo, and the site has a favicon.
+- `assets/mtbrx.js` is now `assets/dr-tbatlas.js`, and its marker attribute
+  is `data-drtbatlas-hidden`.
+- **The embedded JBrowse 2 view is now the genome explorer**, opened on the
+  whole chromosome rather than locked to the gene window, with:
+  - genes coloured by strand and biotype, whose details carry the product,
+    functional note, protein length, WHO catalogue drugs and tier, and a link
+    to the Mycobrowser gene page;
+  - WHO catalogue variant tracks by confidence grading (groups 1–2, 3 and
+    4–5), coloured by grading, and a resistance-associated variant track for
+    each drug;
+  - WHO catalogue genes by tier, catalogue variant density (1 kb bins) and GC
+    content (100 bp windows);
+  - a "Current selection" track marking the active gene and mutation;
+  - a text index, so the browser's location box finds gene names, locus
+    tags, product words and catalogue variants;
+  - focus presets (gene, ±500 bp to ±50 kb, selected mutation), track
+    toggles and a per-drug track picker above the browser, and a colour
+    legend and usage guide below it;
+  - the application's colour theme.
+- Selecting a mutation in the resistance or coordinate tables zooms the
+  browser to its codon; the Coordinate Analysis panel links back up to it.
+- Track files are generated into `data/tracks/` at start-up and rebuilt only
+  when the annotation, catalogue or track format changes. They are gzipped,
+  which cuts the largest download from 8.6 MB to under 1 MB.
+
+### Removed
+- The Plotly gene neighbourhood track, which the genome browser supersedes.
+  The previous/next gene shortcuts in the gene overview remain.
+- `DataLoader.get_prokaryotic_gff3_path` and `DataLoader.get_jbrowse_config`,
+  replaced by `browser_tracks.BrowserTracks`. The direct `plotly` dependency
+  is dropped (Dash still installs it).
+
+### Fixed
+- Start-up with gffutils 0.14, which no longer provides `gffutils.Database`.
+
 ## [1.2.0] - 2026-09-23
 
 ### Changed

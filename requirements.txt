@@ -2,7 +2,6 @@ dash>=2.14.0
 dash-jbrowse>=0.0.2
 dash-bootstrap-components>=1.5.0
 pandas>=2.0.0
-plotly>=5.18.0
 gffutils>=0.12
 biopython>=1.80
 pyfaidx>=0.7.0

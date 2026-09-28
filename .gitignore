@@ -34,9 +34,11 @@ ENV/
 Thumbs.db
 
 # Generated data artefacts
-# (h37rv.gff3.db is tracked deliberately; the flattened annotation is derived
-#  from h37rv.gff3 at start-up and does not belong in version control.)
+# (h37rv.gff3.db is tracked deliberately; the genome browser tracks are
+#  derived from the annotation and catalogue at start-up and do not belong in
+#  version control.)
 data/h37rv.prokaryote.gff3
+data/tracks/
 
 # Test caches
 .pytest_cache/

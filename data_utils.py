@@ -1,11 +1,11 @@
 """
-Data loading and parsing utilities for MtbRx.
+Data loading and parsing utilities for DR-TBAtlas.
 Handles GFF3, catalogue master file, and genomic coordinates.
 
 *Mycobacterium tuberculosis* is a prokaryote: it has no splicing and no
 introns, so a coding sequence (CDS) is equivalent to its gene. The annotation
 is therefore flattened to a single gene-level feature per locus before it
-reaches the genome browser (see :meth:`DataLoader.get_prokaryotic_gff3_path`).
+reaches the genome browser (see :mod:`browser_tracks`).
 """
 import os
 import re
@@ -117,13 +117,12 @@ class DataLoader:
     def __init__(self, data_dir: str = "data"):
         self.data_dir = data_dir
         self.gff3_path = os.path.join(data_dir, "h37rv.gff3")
-        self.prokaryotic_gff3_path = os.path.join(data_dir, "h37rv.prokaryote.gff3")
         self.catalogue_path = os.path.join(data_dir, "catalogue_master_file.txt")
         self.genomic_coords_path = os.path.join(data_dir, "genomic_coordinates.txt")
         self.fasta_path = os.path.join(data_dir, "h37rv.fasta")
         self.fai_path = os.path.join(data_dir, "h37rv.fasta.fai")
 
-        self.gene_db: Optional[gffutils.Database] = None
+        self.gene_db: Optional[gffutils.FeatureDB] = None
         self.genes_cache: Dict[str, GeneInfo] = {}
         self.catalogue_df: Optional[pd.DataFrame] = None
         self.genomic_coords_df: Optional[pd.DataFrame] = None
@@ -141,7 +140,7 @@ class DataLoader:
     # ------------------------------------------------------------------
     # GFF3 / gene annotation
     # ------------------------------------------------------------------
-    def get_gene_db(self) -> gffutils.Database:
+    def get_gene_db(self) -> gffutils.FeatureDB:
         """Get gene database, ensuring thread safety for SQLite."""
         db_path = self.gff3_path + ".db"
 
@@ -158,7 +157,7 @@ class DataLoader:
 
         return self._thread_local_db.db
 
-    def load_gff3(self) -> gffutils.Database:
+    def load_gff3(self) -> gffutils.FeatureDB:
         """Load GFF3 file and create gene database."""
         db_path = self.gff3_path + ".db"
 
@@ -184,8 +183,7 @@ class DataLoader:
 
         Reading the annotation once up front replaces a full SQLite scan per
         lookup and gives every gene its product, functional note and CDS
-        length, which the overview card, tooltips and the neighbourhood track
-        all need.
+        length, which the overview card and the genome browser tracks need.
         """
         if self._genes_sorted:
             return
@@ -297,18 +295,6 @@ class DataLoader:
         ]
         return exact + partial
 
-    def get_genes_in_window(
-        self, start: int, end: int, chromosome: Optional[str] = None
-    ) -> List[GeneInfo]:
-        """Every gene-level feature overlapping a genomic window."""
-        self._load_gene_index()
-        return [
-            gene for gene in self._genes_sorted
-            if gene.end >= start
-            and gene.start <= end
-            and (chromosome is None or gene.chromosome == chromosome)
-        ]
-
     def get_neighbor_genes(
         self, gene_info: GeneInfo
     ) -> Tuple[Optional[GeneInfo], Optional[GeneInfo]]:
@@ -325,74 +311,6 @@ class DataLoader:
         previous = same_contig[position - 1] if position > 0 else None
         following = same_contig[position + 1] if position + 1 < len(same_contig) else None
         return previous, following
-
-    def get_prokaryotic_gff3_path(self) -> str:
-        """
-        Path to a flattened, prokaryote-appropriate copy of the annotation.
-
-        The RefSeq GFF3 nests a CDS inside every gene, which makes the genome
-        browser render each locus twice and offer eukaryotic intron controls
-        for sequence retrieval. For a bacterium the CDS *is* the gene, so the
-        browser is given one gene-level feature per locus with the product and
-        functional note merged in, and no subfeatures at all (TASK-09).
-        """
-        self._load_gene_index()
-
-        source_mtime = os.path.getmtime(self.gff3_path)
-        if (
-            os.path.exists(self.prokaryotic_gff3_path)
-            and os.path.getmtime(self.prokaryotic_gff3_path) >= source_mtime
-        ):
-            return self.prokaryotic_gff3_path
-
-        sequence_regions = []
-        with open(self.gff3_path, "r", encoding="utf-8") as handle:
-            for line in handle:
-                if not line.startswith("#"):
-                    break
-                if line.startswith("##sequence-region"):
-                    sequence_regions.append(line.rstrip("\n"))
-
-        tmp_path = self.prokaryotic_gff3_path + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as out:
-            out.write("##gff-version 3\n")
-            out.write("#!note flattened gene/CDS hierarchy for prokaryotic display\n")
-            for region in sequence_regions:
-                out.write(region + "\n")
-
-            for gene in self._genes_sorted:
-                attributes = [
-                    f"ID={gene.locus_tag}",
-                    f"Name={gene.display_name}",
-                    f"locus_tag={gene.locus_tag}",
-                ]
-                if gene.gene_name and gene.gene_name != gene.locus_tag:
-                    attributes.append(f"gene={_gff_escape(gene.gene_name)}")
-                if gene.product:
-                    attributes.append(f"product={_gff_escape(gene.product)}")
-                if gene.note:
-                    attributes.append(f"Note={_gff_escape(gene.note)}")
-                if gene.biotype:
-                    attributes.append(f"gene_biotype={gene.biotype}")
-                if gene.protein_length:
-                    attributes.append(f"protein_length={gene.protein_length}")
-
-                out.write(
-                    "\t".join([
-                        gene.chromosome,
-                        "MtbRx",
-                        "gene",
-                        str(gene.start),
-                        str(gene.end),
-                        ".",
-                        gene.strand,
-                        ".",
-                        ";".join(attributes),
-                    ]) + "\n"
-                )
-
-        os.replace(tmp_path, self.prokaryotic_gff3_path)
-        return self.prokaryotic_gff3_path
 
     # ------------------------------------------------------------------
     # Reference sequence
@@ -722,93 +640,6 @@ class DataLoader:
             'genomic_coordinates': gc_result.to_dict('records') if len(gc_result) > 0 else [],
             'catalogue': cat_result.to_dict('records') if len(cat_result) > 0 else []
         }
-
-    # ------------------------------------------------------------------
-    # Genome browser configuration
-    # ------------------------------------------------------------------
-    def get_jbrowse_config(self, region: str = None, start: int = None, end: int = None) -> dict:
-        """Generate JBrowse 2 configuration with relative URLs."""
-        # Use relative URLs that the Flask app will serve
-        fasta_url = "/data/h37rv.fasta"
-        fai_url = "/data/h37rv.fasta.fai"
-        # Flattened annotation: one feature per locus, no CDS subfeatures and
-        # therefore no intron controls anywhere in the browser (TASK-09).
-        gff3_url = "/data/" + os.path.basename(self.get_prokaryotic_gff3_path())
-
-        assembly = {
-            "name": "H37Rv NC_000962.3",
-            "sequence": {
-                "type": "ReferenceSequenceTrack",
-                "trackId": "h37rv-seq",
-                "adapter": {
-                    "type": "IndexedFastaAdapter",
-                    "fastaLocation": {
-                        "uri": fasta_url
-                    },
-                    "faiLocation": {
-                        "uri": fai_url
-                    }
-                }
-            }
-        }
-
-        tracks = [
-            {
-                "type": "FeatureTrack",
-                "trackId": "genes",
-                "name": "Genes / CDS (H37Rv)",
-                "assemblyNames": ["H37Rv NC_000962.3"],
-                "adapter": {
-                    "type": "Gff3Adapter",
-                    "gffLocation": {
-                        "uri": gff3_url
-                    }
-                }
-            }
-        ]
-
-        return {
-            "assembly": assembly,
-            "tracks": tracks,
-            "defaultSession": {
-                "name": "H37Rv Session",
-                "view": {
-                    "id": "linear-genome-view",
-                    "type": "LinearGenomeView",
-                    "displayedRegions": [
-                        {
-                            "assemblyName": "H37Rv NC_000962.3",
-                            "refName": region or "NC_000962.3",
-                            "start": start or 1,
-                            "end": end or 10000
-                        }
-                    ],
-                    "tracks": [
-                        {
-                            "type": "FeatureTrack",
-                            "configuration": "genes",
-                            "displays": [
-                                {
-                                    "type": "LinearBasicDisplay",
-                                    "configuration": "genes-LinearBasicDisplay"
-                                }
-                            ]
-                        }
-                    ]
-                }
-            }
-        }
-
-
-def _gff_escape(value: str) -> str:
-    """
-    Escape a value for use inside a GFF3 attribute field.
-
-    ``,``, ``;``, ``=``, ``&`` and ``%`` carry structural meaning in the GFF3
-    attribute column, so they must stay percent-encoded — a product name such
-    as "KatG,catalase-peroxidase" would otherwise be read as two values.
-    """
-    return urllib.parse.quote(str(value), safe=" ()[]{}<>/'+*:.-_")
 
 
 _COMPLEMENT = str.maketrans("ACGTNacgtn", "TGCANtgcan")
