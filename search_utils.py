@@ -1,5 +1,5 @@
 """
-Query parsing and normalisation for the MtbRx search bar.
+Query parsing and normalisation for the DR-TBAtlas search bar.
 
 The search bar accepts three input formats (TASK-02):
 

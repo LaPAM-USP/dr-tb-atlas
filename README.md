@@ -1,6 +1,6 @@
-# MtbRx - *Mycobacterium tuberculosis* Genomic Resistance Explorer
+# DR-TBAtlas - *Mycobacterium tuberculosis* Genomic Resistance Explorer
 
-MtbRx is a web-based genomic explorer for *Mycobacterium tuberculosis*, designed to bridge the gap between complex genomic data and clinical drug resistance interpretation. Built with Python Dash, it provides researchers and clinicians with an integrated platform to visualize genomic regions, calculate variant coordinates, and cross-reference mutations with the official WHO drug resistance catalogue. This app has it's on [![DOI](https://zenodo.org/badge/1199917151.svg)](https://doi.org/10.5281/zenodo.21035590) and a free hosted version is available at [Render](https://tbdashboard.onrender.com/).
+DR-TBAtlas is a web-based genomic explorer for *Mycobacterium tuberculosis*, designed to bridge the gap between complex genomic data and clinical drug resistance interpretation. Built with Python Dash, it provides researchers and clinicians with an integrated platform to visualize genomic regions, calculate variant coordinates, and cross-reference mutations with the official WHO drug resistance catalogue. This app has it's on [![DOI](https://zenodo.org/badge/1199917151.svg)](https://doi.org/10.5281/zenodo.21035590) and a free hosted version is available at [Render](https://tbdashboard.onrender.com/).
 ***Note: the free Render instance may take 30-60 seconds to wake up on first load.***
 
 ## References
@@ -15,8 +15,15 @@ MtbRx is a web-based genomic explorer for *Mycobacterium tuberculosis*, designed
   - Gene name / symbol — `mmpS5`
   - Variant — `katG_Ser315Thr` (three-letter notation; `katG_S315T` is accepted and normalised)
 - **Variant Deep Linking**: Searching a variant loads the gene *and* selects, highlights and pages to that mutation in the resistance and coordinate tables
-- **Gene Neighbourhood Track**: An interactive prokaryotic track — click any neighbouring gene to load it, hover for gene symbol, locus tag, product and functional note
-- **Genomic Visualization**: Embedded JBrowse 2 view of the region
+- **Genome Browser**: An embedded JBrowse 2 view of the whole H37Rv chromosome, opened on the active gene, with:
+  - Genes coloured by strand and biotype, each with product, functional note, WHO catalogue drugs and tier, and a link to its Mycobrowser page in the feature details
+  - WHO catalogue variant tracks split by confidence grading (associated, uncertain, not associated), plus one resistance-associated variant track per drug
+  - WHO catalogue genes by tier, catalogue variant density and GC content tracks
+  - A "Current selection" track that marks the active gene and the selected mutation
+  - Reference sequence with six-frame translation at base level
+  - Focus presets (gene, ±500 bp to ±50 kb, selected mutation) and track toggles above the browser; selecting a mutation in any table zooms the browser to its codon
+  - Search from the browser's own location box by gene name, locus tag, product word or catalogue variant (`katG_p.Ser315Thr`)
+  - JBrowse's built-in tools: track selector, motif search, SVG export, horizontal flip and region sequence retrieval
 - **Drug Resistance Profiles**: The full WHO catalogue schema — mutation, tier, final confidence grading, effect, comment, `CHANGES vs ver1`, relaxed-thresholds simulation and silent-mutation flag, with a column-visibility control
 - **Coordinate Calculator**: Automatically convert between:
   - Genomic coordinates (absolute position on chromosome)
@@ -80,8 +87,7 @@ The application will start on `http://localhost:8050`
 3. Click the search button or press `Enter`
 4. Explore the results:
    - **Gene Info**: Genomic coordinates, strand, length in bp and amino acids, functional note
-   - **Gene Neighbourhood**: Clickable track of the surrounding genes
-   - **Genomic Visualization**: JBrowse view of the region
+   - **Genome Browser**: JBrowse view of the gene with catalogue, GC and selection tracks
    - **Sequence Retrieval**: CDS, protein and flanking sequence
    - **Drug Resistance**: Associated drugs, tiers and WHO confidence gradings
    - **Genomic Coordinates**: All nucleotide changes
@@ -94,7 +100,8 @@ name, or **Catalogue Summary** for counts across the whole dataset.
 
 *M. tuberculosis* is a bacterium: it has no splicing, and a coding sequence is
 equivalent to its gene. The annotation handed to the genome browser is
-therefore flattened to a single gene-level feature per locus, which removes
+therefore flattened to a single gene-level feature per locus (see
+`browser_tracks.py`), which removes
 both the redundant gene/CDS pair and every intron-based control from the
 browser's sequence tools. Protein translation and flanking-sequence retrieval
 are provided by the **Sequence Retrieval** panel instead.
@@ -132,10 +139,11 @@ Gene on - strand:
 ## Project Structure
 
 ```
-mtbrx/
+dr-tbatlas/
 ├── app.py                      # Dash application and callbacks
 ├── layout.py                   # Static layout, branding, modals and citation
-├── genome_view.py              # Gene neighbourhood track, JBrowse and sequence panel
+├── genome_view.py              # Genome browser card, controls and sequence panel
+├── browser_tracks.py           # JBrowse track files, text index and configuration
 ├── tables.py                   # Resistance, coordinate and summary tables
 ├── search_utils.py             # Query parsing and mutation normalisation
 ├── data_utils.py               # Data loading and parsing utilities
@@ -144,13 +152,15 @@ mtbrx/
 ├── README.md                   # This file
 ├── assets/
 │   ├── style.css              # Application styling
-│   ├── mtbrx.js               # Removes residual intron controls from JBrowse dialogs
+│   ├── dr-tbatlas.js          # Removes residual intron controls from JBrowse dialogs
+│   ├── dr-tbatlas-logo.png    # DR-TBAtlas logo (hero), from icon.png
+│   ├── favicon.ico            # Browser tab icon
 │   ├── lapam.png              # Laboratory logo
 │   └── usp.png                # Optional: USP crest, shown in the footer when present
 ├── tests/                      # pytest suite
 └── data/
     ├── h37rv.gff3             # Genome annotation
-    ├── h37rv.prokaryote.gff3  # Generated: flattened annotation for the browser
+    ├── tracks/                # Generated at start-up: genome browser tracks and search index
     ├── h37rv.fasta            # Reference sequence
     ├── h37rv.fasta.fai        # FASTA index
     ├── catalogue_master_file.txt  # Drug resistance catalogue

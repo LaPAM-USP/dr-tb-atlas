@@ -13,7 +13,7 @@
     "use strict";
 
     var INTRON = /intron/i;
-    var ATTR = "data-mtbrx-hidden";
+    var ATTR = "data-drtbatlas-hidden";
 
     function hide(element) {
         if (!element || element.getAttribute(ATTR)) {

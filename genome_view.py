@@ -1,311 +1,239 @@
 """
 Genome visualisation components.
 
-Two complementary views are rendered:
-
-* An interactive **gene neighbourhood track** built with Plotly. It is
-  prokaryote-native (one feature per locus, no exon/intron machinery), every
-  gene is clickable so the whole dashboard follows the selection (TASK-10),
-  and hovering shows a structured functional annotation card (TASK-11).
-* The embedded **JBrowse 2** linear view, for base-level inspection and
-  sequence retrieval, fed with the flattened annotation (TASK-09).
+The embedded **JBrowse 2** linear view is the genome explorer: it carries the
+flattened annotation (TASK-09) plus the WHO catalogue, GC content and
+selection tracks built by :mod:`browser_tracks`. A toolbar above it sets the
+focus (gene, flanking window or selected mutation) and the visible tracks,
+and a legend and usage guide sit below it.
 """
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import dash_bootstrap_components as dbc
-import plotly.graph_objects as go
+import dash_jbrowse
 from dash import dcc, html
 
+import browser_tracks
 from data_utils import GeneInfo
 
-# Default flank shown around the active gene, and the choices offered.
-DEFAULT_WINDOW_BP = 5000
-WINDOW_CHOICES = [
-    {"label": "± 1 kb", "value": 1000},
-    {"label": "± 5 kb", "value": 5000},
-    {"label": "± 10 kb", "value": 10000},
-    {"label": "± 25 kb", "value": 25000},
-]
-
-# Default flank for sequence retrieval, matching the JBrowse default.
+# Default flank for sequence retrieval and for the browser's opening view.
 DEFAULT_FLANK_BP = 500
 
-# Pattern-matching id: the track only exists once a gene is loaded, and a
-# plain string id would break every callback that reads its clickData.
-GENE_TRACK_ID = {"type": "gene-track", "index": "main"}
+# Bases shown either side of a selected mutation: enough to read the codon
+# and the six-frame translation.
+MUTATION_FLANK_BP = 40
 
-COLOR_ACTIVE = "#438E8E"
-COLOR_FORWARD = "#9CCBCB"
-COLOR_REVERSE = "#C9D8E4"
-COLOR_NONCODING = "#E3C9A8"
+FOCUS_GENE = "gene"
+FOCUS_MUTATION = "mutation"
+FOCUS_CHOICES = [
+    {"label": "Gene", "value": FOCUS_GENE},
+    {"label": "± 500 bp", "value": "500"},
+    {"label": "± 2 kb", "value": "2000"},
+    {"label": "± 10 kb", "value": "10000"},
+    {"label": "± 50 kb", "value": "50000"},
+    {"label": "Selected mutation", "value": FOCUS_MUTATION},
+]
+DEFAULT_FOCUS = str(DEFAULT_FLANK_BP)
 
-_MAX_NOTE_CHARS = 220
-
-
-def _wrap(text: str, width: int = 58) -> str:
-    """Soft-wrap text with HTML breaks for use inside a Plotly tooltip."""
-    words = str(text).split()
-    lines: List[str] = []
-    current = ""
-    for word in words:
-        if len(current) + len(word) + 1 > width:
-            lines.append(current)
-            current = word
-        else:
-            current = f"{current} {word}".strip()
-    if current:
-        lines.append(current)
-    return "<br>".join(lines)
+JBROWSE_ID = "jbrowse-linear-view"
 
 
-def _hover_card(gene: GeneInfo, is_active: bool) -> str:
-    """
-    Structured hover annotation for one gene (TASK-11).
-
-    Shows the gene symbol, locus tag, product and functional note, in the
-    style of a compact Mycobrowser-like summary card.
-    """
-    rows = [
-        f"<b>{gene.display_name}</b>"
-        + ("  <i>(current gene)</i>" if is_active else ""),
-        f"<b>Locus tag:</b> {gene.locus_tag}",
-    ]
-    if gene.product:
-        rows.append(f"<b>Product:</b> {_wrap(gene.product)}")
-    if gene.biotype and gene.biotype != "protein_coding":
-        rows.append(f"<b>Biotype:</b> {gene.biotype.replace('_', ' ')}")
-
-    coordinates = f"{gene.start:,}–{gene.end:,} ({gene.strand}) · {gene.length:,} bp"
-    if gene.protein_length:
-        coordinates += f" · {gene.protein_length:,} aa"
-    rows.append(f"<b>Position:</b> {coordinates}")
-
-    if gene.note:
-        note = gene.note
-        if len(note) > _MAX_NOTE_CHARS:
-            note = note[:_MAX_NOTE_CHARS].rstrip() + "…"
-        rows.append(f"<b>Note:</b> {_wrap(note)}")
-
-    rows.append("<i>Click to open this gene</i>")
-    return "<br>".join(rows)
-
-
-def _gene_color(gene: GeneInfo, is_active: bool) -> str:
-    if is_active:
-        return COLOR_ACTIVE
-    if not gene.is_protein_coding:
-        return COLOR_NONCODING
-    return COLOR_FORWARD if gene.strand == "+" else COLOR_REVERSE
-
-
-def build_neighborhood_figure(
-    genes: List[GeneInfo],
-    active_gene: GeneInfo,
-    window_start: int,
-    window_end: int,
-) -> go.Figure:
-    """
-    Build the clickable gene neighbourhood track.
-
-    Forward-strand genes sit on the upper row and reverse-strand genes on the
-    lower row. ``customdata`` carries the locus tag of each gene so the click
-    callback can navigate the dashboard.
-    """
-    figure = go.Figure()
-
-    bases, spans, rows, colors, hovers, custom, labels = [], [], [], [], [], [], []
-    arrow_x, arrow_y, arrow_symbols, arrow_colors = [], [], [], []
-
-    for gene in genes:
-        is_active = gene.locus_tag == active_gene.locus_tag
-        visible_start = max(gene.start, window_start)
-        visible_end = min(gene.end, window_end)
-        color = _gene_color(gene, is_active)
-        row = 1 if gene.strand == "+" else 0
-
-        bases.append(visible_start)
-        spans.append(max(visible_end - visible_start, 1))
-        rows.append(row)
-        colors.append(color)
-        hovers.append(_hover_card(gene, is_active))
-        custom.append(gene.locus_tag)
-
-        # Only label genes wide enough for the text to fit legibly.
-        span_fraction = (visible_end - visible_start) / max(window_end - window_start, 1)
-        labels.append(gene.display_name if span_fraction > 0.045 else "")
-
-        # Direction marker at the gene's 3' end.
-        arrow_x.append(gene.end if gene.strand == "+" else gene.start)
-        arrow_y.append(row)
-        arrow_symbols.append("triangle-right" if gene.strand == "+" else "triangle-left")
-        arrow_colors.append(color)
-
-    figure.add_trace(go.Bar(
-        base=bases,
-        x=spans,
-        y=rows,
-        orientation="h",
-        width=0.42,
-        marker={"color": colors, "line": {"color": "#FFFFFF", "width": 1}},
-        text=labels,
-        textposition="inside",
-        insidetextanchor="middle",
-        textfont={"size": 11, "color": "#1F2933"},
-        customdata=custom,
-        hovertext=hovers,
-        hovertemplate="%{hovertext}<extra></extra>",
-        showlegend=False,
-        cliponaxis=False,
-    ))
-
-    figure.add_trace(go.Scatter(
-        x=arrow_x,
-        y=arrow_y,
-        mode="markers",
-        marker={
-            "symbol": arrow_symbols,
-            "size": 11,
-            "color": arrow_colors,
-            "line": {"color": "#FFFFFF", "width": 1},
-        },
-        customdata=custom,
-        hovertext=hovers,
-        hovertemplate="%{hovertext}<extra></extra>",
-        showlegend=False,
-    ))
-
-    # Highlight the active gene's span across the whole track.
-    figure.add_vrect(
-        x0=active_gene.start,
-        x1=active_gene.end,
-        fillcolor=COLOR_ACTIVE,
-        opacity=0.08,
-        line_width=0,
-        layer="below",
+def focus_location(
+    gene_info: GeneInfo, focus: Optional[str], selection: Optional[Dict] = None
+) -> str:
+    """Locus string for a focus choice, falling back to the gene."""
+    position = (selection or {}).get("position")
+    if focus == FOCUS_MUTATION and position:
+        return browser_tracks.locus_string(
+            gene_info.chromosome,
+            int(position) - MUTATION_FLANK_BP,
+            int(position) + MUTATION_FLANK_BP,
+        )
+    if focus and focus.isdigit():
+        flank = int(focus)
+    else:
+        # A little padding keeps the gene's ends clear of the view edges.
+        flank = max(20, gene_info.length // 20)
+    return browser_tracks.locus_string(
+        gene_info.chromosome, gene_info.start - flank, gene_info.end + flank
     )
 
-    figure.update_layout(
-        barmode="overlay",
-        bargap=0.1,
-        height=210,
-        margin={"l": 8, "r": 8, "t": 28, "b": 36},
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="#FFFFFF",
-        clickmode="event",
-        dragmode=False,
-        hoverlabel={
-            "bgcolor": "#FFFFFF",
-            "bordercolor": COLOR_ACTIVE,
-            "font": {"size": 12, "color": "#2D3748", "family": "Inter, sans-serif"},
-            "align": "left",
-        },
-        xaxis={
-            "range": [window_start, window_end],
-            "title": {"text": f"{active_gene.chromosome} position (bp)", "font": {"size": 11}},
-            "tickformat": ",d",
-            "showgrid": True,
-            "gridcolor": "#F1F5F9",
-            "zeroline": False,
-            "fixedrange": True,
-        },
-        yaxis={
-            "range": [-0.55, 1.55],
-            "tickmode": "array",
-            "tickvals": [0, 1],
-            "ticktext": ["− strand", "+ strand"],
-            "showgrid": False,
-            "zeroline": False,
-            "fixedrange": True,
-            "tickfont": {"size": 11},
-        },
-    )
-    return figure
 
-
-def neighborhood_card(
-    genes: List[GeneInfo],
+def jbrowse_view(
+    tracks: browser_tracks.BrowserTracks,
     gene_info: GeneInfo,
-    window_bp: int = DEFAULT_WINDOW_BP,
-) -> dbc.Card:
-    """Card wrapping the interactive neighbourhood track."""
-    window_start = max(1, gene_info.start - window_bp)
-    window_end = gene_info.end + window_bp
-    figure = build_neighborhood_figure(genes, gene_info, window_start, window_end)
+    focus: Optional[str] = DEFAULT_FOCUS,
+    visible_tracks: Optional[List[str]] = None,
+    drug_tracks: Optional[List[str]] = None,
+    selection: Optional[Dict] = None,
+) -> dash_jbrowse.LinearGenomeView:
+    """The JBrowse 2 linear view for a gene, focus and track selection."""
+    visible = list(visible_tracks if visible_tracks is not None else browser_tracks.DEFAULT_TRACKS)
+    visible += [browser_tracks.drug_track_id(drug) for drug in (drug_tracks or [])]
+    config = tracks.config(
+        visible_tracks=visible,
+        selection_features=browser_tracks.selection_features(gene_info, selection),
+    )
+    return dash_jbrowse.LinearGenomeView(
+        id=JBROWSE_ID,
+        assembly=config["assembly"],
+        tracks=config["tracks"],
+        defaultSession=config["defaultSession"],
+        aggregateTextSearchAdapters=config["aggregateTextSearchAdapters"],
+        configuration=config["configuration"],
+        location=focus_location(gene_info, focus, selection),
+    )
 
+
+def jbrowse_card(jbrowse_component, drugs: List[str]) -> dbc.Card:
+    """Card wrapping the embedded JBrowse 2 linear genome view and its controls."""
     return dbc.Card([
         dbc.CardHeader([
             dbc.Row([
                 dbc.Col(
                     html.H5(
-                        [html.I(className="bi bi-diagram-3 me-2"), "Gene Neighbourhood"],
+                        [html.I(className="bi bi-eye me-2"), "Genome Browser"],
                         className="card-header-title",
                     ),
-                    md=6,
+                    md=4,
                 ),
-                dbc.Col([
+                dbc.Col(
                     dbc.RadioItems(
-                        id="neighborhood-window",
-                        options=WINDOW_CHOICES,
-                        value=window_bp,
+                        id="genome-focus",
+                        options=FOCUS_CHOICES,
+                        value=DEFAULT_FOCUS,
                         inline=True,
                         className="window-toggle",
                         inputClassName="btn-check",
                         labelClassName="btn btn-sm window-toggle-btn",
                         labelCheckedClassName="active",
-                    )
-                ], md=6, className="text-md-end"),
-            ], align="center"),
+                    ),
+                    md=8,
+                    className="text-md-end",
+                ),
+            ], align="center", className="g-2"),
         ], className="card-header-custom"),
         dbc.CardBody([
-            html.P([
-                html.I(className="bi bi-cursor me-2"),
-                "Click any gene to load it. Hover for product and functional annotation.",
-            ], className="text-muted small mb-2"),
-            dcc.Graph(
-                id=dict(GENE_TRACK_ID),
-                figure=figure,
-                config={"displayModeBar": False, "doubleClick": False},
-                className="neighborhood-graph",
-            ),
-            html.Div([
-                _legend_swatch(COLOR_ACTIVE, "Current gene"),
-                _legend_swatch(COLOR_FORWARD, "Forward strand"),
-                _legend_swatch(COLOR_REVERSE, "Reverse strand"),
-                _legend_swatch(COLOR_NONCODING, "Non-coding (rRNA/tRNA/ncRNA)"),
-            ], className="d-flex flex-wrap gap-3 mt-2 small text-muted"),
+            dbc.Row([
+                dbc.Col([
+                    html.Label("Tracks", className="small text-muted d-block mb-1"),
+                    dbc.Checklist(
+                        id="genome-tracks",
+                        options=browser_tracks.TRACK_CHOICES,
+                        value=list(browser_tracks.DEFAULT_TRACKS),
+                        inline=True,
+                        switch=True,
+                        className="track-toggle small",
+                    ),
+                ], lg=8),
+                dbc.Col([
+                    html.Label(
+                        "Resistance variants by drug",
+                        className="small text-muted d-block mb-1",
+                        htmlFor="genome-drug-tracks",
+                    ),
+                    dcc.Dropdown(
+                        id="genome-drug-tracks",
+                        options=[{"label": drug, "value": drug} for drug in drugs],
+                        value=[],
+                        multi=True,
+                        placeholder="Add a track per drug…",
+                        className="drug-track-picker",
+                    ),
+                ], lg=4),
+            ], className="g-3 mb-3"),
+
+            html.Div(jbrowse_component, id="jbrowse-view", className="jbrowse-container"),
+
+            browser_legend(),
+            browser_guide(),
         ]),
-    ], className="result-card")
+    ], id="genome-browser-card", className="result-card")
 
 
-def _legend_swatch(color: str, label: str) -> html.Span:
+def _swatch(color: str, label: str) -> html.Span:
     return html.Span([
         html.Span(className="legend-swatch", style={"backgroundColor": color}),
         label,
     ], className="d-inline-flex align-items-center")
 
 
-def jbrowse_card(jbrowse_component, gene_info: GeneInfo, flank: int) -> dbc.Card:
-    """Card wrapping the embedded JBrowse 2 linear genome view."""
-    return dbc.Card([
-        dbc.CardHeader([
-            html.H5(
-                [html.I(className="bi bi-eye me-2"), "Genomic Visualization"],
-                className="card-header-title",
-            )
-        ], className="card-header-custom"),
-        dbc.CardBody([
-            html.Div(jbrowse_component, className="jbrowse-container"),
-            html.P([
-                html.I(className="bi bi-info-circle me-2"),
-                f"Showing {gene_info.chromosome}:"
-                f"{max(1, gene_info.start - flank):,}–{gene_info.end + flank:,} "
-                f"({flank:,} bp flanking). The annotation track is flattened to one "
-                "feature per locus: in ",
-                html.I("M. tuberculosis"),
-                " a CDS is the gene, so no separate CDS track or intron controls are shown.",
-            ], className="text-muted small mb-0 mt-3"),
+def browser_legend() -> html.Div:
+    """Colour key shared by the gene and catalogue tracks."""
+    grades = browser_tracks.GRADE_COLORS
+    labels = browser_tracks.GRADE_LABELS
+    genes = browser_tracks.GENE_COLORS
+    return html.Div([
+        html.Div([
+            html.Span("Genes", className="legend-heading"),
+            _swatch(genes["forward"], "Forward strand"),
+            _swatch(genes["reverse"], "Reverse strand"),
+            _swatch(genes["noncoding"], "rRNA / tRNA / ncRNA"),
+            _swatch(genes["pseudogene"], "Pseudogene"),
+            _swatch(browser_tracks.SELECTION_COLOR, "Selected mutation"),
+        ], className="legend-row"),
+        html.Div([
+            html.Span("WHO grading", className="legend-heading"),
+            *[_swatch(grades[group], f"{group}) {labels[group]}") for group in sorted(grades)],
+        ], className="legend-row"),
+        html.Div([
+            html.Span("Catalogue genes", className="legend-heading"),
+            _swatch(browser_tracks.TIER_COLORS["1"], "Tier 1"),
+            _swatch(browser_tracks.TIER_COLORS["2"], "Tier 2"),
+        ], className="legend-row"),
+    ], className="browser-legend small text-muted mt-3")
+
+
+def browser_guide() -> html.Details:
+    """Short guide to the browser's built-in tools."""
+    tips = [
+        ("bi-search", "Search", [
+            "Type a gene name, locus tag, product word or catalogue variant "
+            "(e.g. ", html.Code("katG_p.Ser315Thr"), ") into the browser's "
+            "location box.",
         ]),
-    ], className="result-card")
+        ("bi-arrows-move", "Navigate", [
+            "Drag the tracks to pan, use the zoom buttons or the overview bar, "
+            "or drag across the ruler to select a region and zoom into it or "
+            "get its sequence.",
+        ]),
+        ("bi-card-text", "Feature details", [
+            "Click any gene or variant for its product, functional note, WHO "
+            "grading per drug and a link to the Mycobrowser gene page.",
+        ]),
+        ("bi-layers", "More tracks", [
+            "Open the track selector from the view menu (",
+            html.I(className="bi bi-list"),
+            ") for every grading and per-drug track, grouped by category.",
+        ]),
+        ("bi-sliders", "Track options", [
+            "Use a track's menu to switch between normal, compact and collapsed "
+            "layouts, show or hide labels, or rescale quantitative tracks.",
+        ]),
+        ("bi-tools", "Tools", [
+            "The view menu also offers motif search (adds a track of matches), "
+            "SVG export for figures and horizontal flipping, so reverse-strand "
+            "genes read 5'→3'. Zoom to base level to see the six-frame translation.",
+        ]),
+    ]
+    return html.Details([
+        html.Summary([html.I(className="bi bi-question-circle me-2"), "Using the genome browser"],
+                     className="small text-primary"),
+        dbc.Row([
+            dbc.Col(html.Div([
+                html.I(className=f"bi {icon} browser-tip-icon"),
+                html.Div([html.Strong(title, className="d-block small"),
+                          html.Span(body, className="small text-muted")]),
+            ], className="d-flex gap-2"), md=6, lg=4)
+            for icon, title, body in tips
+        ], className="g-3 mt-1"),
+        html.P([
+            html.I(className="bi bi-info-circle me-2"),
+            "The annotation is flattened to one feature per locus: in ",
+            html.I("M. tuberculosis"),
+            " a CDS is the gene, so no separate CDS track or intron controls are shown.",
+        ], className="text-muted small mb-0 mt-3"),
+    ], className="browser-guide mt-3")
 
 
 def sequence_card(gene_info: GeneInfo) -> dbc.Card:

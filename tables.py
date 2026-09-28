@@ -1,5 +1,5 @@
 """
-Table builders for the MtbRx.
+Table builders for the DR-TBAtlas.
 
 Covers the Drug Resistance Profile with the full WHO catalogue schema
 (TASK-12), the Genomic Coordinates table with horizontal overflow and

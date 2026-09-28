@@ -1,17 +1,17 @@
 """
-MtbRx - A Dash application for visualizing TB genomic data and drug resistance.
+DR-TBAtlas - A Dash application for visualizing TB genomic data and drug resistance.
 """
 import os
 from typing import Dict, List, Optional
 
 import dash
 import dash_bootstrap_components as dbc
-import dash_jbrowse
 import pandas as pd
 from dash import ALL, Input, Output, State, callback_context, dcc, html
 from dash.exceptions import PreventUpdate
 from flask import send_from_directory
 
+import browser_tracks
 import genome_view
 import layout as ui
 import search_utils
@@ -27,16 +27,17 @@ data_loader = DataLoader(data_dir=DATA_DIR)
 data_loader.load_gff3()
 data_loader.load_catalogue()
 data_loader.load_genomic_coordinates()
-# Flattened annotation used by the genome browser (TASK-09).
-data_loader.get_prokaryotic_gff3_path()
+# Flattened annotation and the derived catalogue, GC and search tracks used
+# by the genome browser (TASK-09).
+browser = browser_tracks.BrowserTracks(data_loader).build()
 
 coord_calculator = CoordinateCalculator(data_loader)
 
 DRUG_GENE_MAP = data_loader.get_drug_gene_map()
 CATALOGUE_TOTALS = data_loader.get_catalogue_totals()
 
-# Like the coordinates table and the neighbourhood track, the analysis panel is
-# created only once a gene is loaded, so it carries a pattern-matching id.
+# Like the coordinates table, the analysis panel is created only once a gene
+# is loaded, so it carries a pattern-matching id.
 ANALYSIS_DISPLAY_ID = {"type": "analysis-display", "index": "main"}
 
 # Initialize Dash app
@@ -46,7 +47,7 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}]
 )
-app.title = "MtbRx | LaPAM"
+app.title = f"{ui.APP_NAME} | LaPAM"
 
 # Expose the Flask server for gunicorn
 server = app.server
@@ -68,7 +69,7 @@ app.layout = html.Div([
     dcc.Store(id="selection-store"),
 
     ui.navbar(app),
-    ui.hero_search(),
+    ui.hero_search(app),
 
     dbc.Container([
         dcc.Loading(
@@ -150,8 +151,7 @@ def toggle_cite_modal(header_clicks, footer_clicks, close_clicks):
     [Input("search-form", "n_submit"),
      Input({"type": "quick-search", "index": ALL}, "n_clicks"),
      Input({"type": "gene-link", "drug": ALL, "index": ALL}, "n_clicks"),
-     Input({"type": "neighbor-link", "index": ALL}, "n_clicks"),
-     Input(dict(genome_view.GENE_TRACK_ID, index=ALL), "clickData")],
+     Input({"type": "neighbor-link", "index": ALL}, "n_clicks")],
     State("search-input", "value"),
     prevent_initial_call=True,
 )
@@ -160,15 +160,14 @@ def route_query(
     quick_clicks,
     gene_link_clicks,
     neighbor_clicks,
-    track_clicks,
     search_value,
 ):
     """
     Resolve a query from any entry point into the active gene.
 
     Handles the search form (submitted with the button or the Enter key,
-    TASK-01), the quick-access pills, the Browse by Drug chips, neighbour
-    shortcuts and clicks on the neighbourhood track (TASK-10).
+    TASK-01), the quick-access pills, the Browse by Drug chips and the
+    neighbour shortcuts (TASK-10).
     """
     triggered = callback_context.triggered_id
     if triggered is None:
@@ -180,12 +179,6 @@ def route_query(
     if isinstance(triggered, dict):
         if not _triggered_click_value():
             raise PreventUpdate
-
-        if triggered.get("type") == "gene-track":
-            locus_tag = _locus_from_click(_triggered_click_value())
-            if not locus_tag:
-                raise PreventUpdate
-            return _navigate(locus_tag)
 
         token = triggered.get("index")
         if triggered.get("type") == "quick-search":
@@ -212,13 +205,6 @@ def _triggered_click_value():
     """The n_clicks value that triggered a pattern-matching callback."""
     triggered = callback_context.triggered
     return triggered[0]["value"] if triggered else None
-
-
-def _locus_from_click(click_data) -> Optional[str]:
-    """Locus tag carried by a click on the neighbourhood track."""
-    if not isinstance(click_data, dict) or not click_data.get("points"):
-        return None
-    return click_data["points"][0].get("customdata")
 
 
 def _navigate(token: Optional[str], mutation: Optional[str] = None, query: Optional[str] = None):
@@ -283,26 +269,10 @@ def render_gene(nav: Optional[Dict]):
 
     results: List = [_gene_overview_card(gene_info, in_catalogue)]
 
-    # Interactive prokaryotic neighbourhood track.
-    window = genome_view.DEFAULT_WINDOW_BP
-    neighbours = data_loader.get_genes_in_window(
-        max(1, gene_info.start - window), gene_info.end + window, gene_info.chromosome
-    )
-    results.append(genome_view.neighborhood_card(neighbours, gene_info, window))
-
-    # Embedded JBrowse view.
-    flank = genome_view.DEFAULT_FLANK_BP
-    jbrowse_start = max(1, gene_info.start - flank)
-    jbrowse_end = gene_info.end + flank
-    jb_config = data_loader.get_jbrowse_config(gene_info.chromosome, jbrowse_start, jbrowse_end)
-    jbrowse_component = dash_jbrowse.LinearGenomeView(
-        id="jbrowse-linear-view",
-        assembly=jb_config["assembly"],
-        tracks=jb_config["tracks"],
-        defaultSession=jb_config["defaultSession"],
-        location=f"{gene_info.chromosome}:{jbrowse_start}-{jbrowse_end}",
-    )
-    results.append(genome_view.jbrowse_card(jbrowse_component, gene_info, flank))
+    # Embedded JBrowse view: the genome explorer.
+    results.append(genome_view.jbrowse_card(
+        genome_view.jbrowse_view(browser, gene_info), browser.drugs
+    ))
     results.append(genome_view.sequence_card(gene_info))
 
     if not in_catalogue:
@@ -697,28 +667,43 @@ def toggle_resistance_columns(visible_keys):
 
 
 @app.callback(
-    Output(dict(genome_view.GENE_TRACK_ID, index=ALL), "figure"),
-    Input("neighborhood-window", "value"),
-    State("current-gene-store", "data"),
+    Output("genome-focus", "value"),
+    Input("selection-store", "data"),
     prevent_initial_call=True,
 )
-def resize_neighborhood(window_bp, gene_data):
-    """Redraw the neighbourhood track at a different zoom level."""
-    if not gene_data or not window_bp:
+def focus_selected_mutation(selection):
+    """Selecting a mutation with known coordinates brings it into view."""
+    if not (selection or {}).get("position"):
+        raise PreventUpdate
+    return genome_view.FOCUS_MUTATION
+
+
+@app.callback(
+    Output("jbrowse-view", "children"),
+    [Input("genome-focus", "value"),
+     Input("genome-tracks", "value"),
+     Input("genome-drug-tracks", "value")],
+    [State("selection-store", "data"),
+     State("current-gene-store", "data")],
+    prevent_initial_call=True,
+)
+def update_genome_browser(focus, visible_tracks, drug_tracks, selection, gene_data):
+    """Rebuild the browser for a new focus or track selection."""
+    if not gene_data:
         raise PreventUpdate
 
     gene_info = data_loader.get_gene_info(gene_data["locus_tag"])
     if gene_info is None:
         raise PreventUpdate
 
-    window_bp = int(window_bp)
-    window_start = max(1, gene_info.start - window_bp)
-    window_end = gene_info.end + window_bp
-    genes = data_loader.get_genes_in_window(window_start, window_end, gene_info.chromosome)
-    figure = genome_view.build_neighborhood_figure(
-        genes, gene_info, window_start, window_end
+    return genome_view.jbrowse_view(
+        browser,
+        gene_info,
+        focus=focus,
+        visible_tracks=visible_tracks or [],
+        drug_tracks=drug_tracks,
+        selection=selection,
     )
-    return [figure] * len(callback_context.outputs_list)
 
 
 @app.callback(
@@ -849,7 +834,17 @@ def display_coordinate_calculation(selection, gene_data):
                     className="text-muted",
                 ),
             ]),
-        ], className="mb-3"),
+            dbc.Col(
+                # The browser has already moved to the mutation; this only
+                # scrolls back up to it.
+                html.A(
+                    [html.I(className="bi bi-eye me-1"), "View in genome browser"],
+                    href="#genome-browser-card",
+                    className="btn btn-sm btn-soft",
+                ),
+                width="auto",
+            ) if position else None,
+        ], className="mb-3 align-items-start"),
 
         dbc.Row([
             dbc.Col([

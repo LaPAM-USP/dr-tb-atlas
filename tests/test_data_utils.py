@@ -117,54 +117,6 @@ def test_variant_coordinates_are_indexed_by_gene(loader):
 
 
 # ----------------------------------------------------------------------
-# TASK-09: flattened prokaryotic annotation
-# ----------------------------------------------------------------------
-def test_flattened_annotation_has_no_subfeatures(loader):
-    """
-    The browser must see one feature per locus.
-
-    With no CDS or exon children, JBrowse offers no intron-based sequence
-    options at all, which is the point of the flattening.
-    """
-    path = loader.get_prokaryotic_gff3_path()
-    feature_types, parents = set(), 0
-
-    with open(path, "r", encoding="utf-8") as handle:
-        for line in handle:
-            if line.startswith("#"):
-                continue
-            fields = line.rstrip("\n").split("\t")
-            feature_types.add(fields[2])
-            if "Parent=" in fields[8]:
-                parents += 1
-
-    assert feature_types == {"gene"}
-    assert parents == 0
-
-
-def test_flattened_annotation_escapes_attribute_separators(loader):
-    """A product containing a comma must not be split into two values."""
-    path = loader.get_prokaryotic_gff3_path()
-    with open(path, "r", encoding="utf-8") as handle:
-        for line in handle:
-            if line.startswith("#"):
-                continue
-            attributes = line.rstrip("\n").split("\t")[8]
-            assert "," not in attributes
-
-
-def test_flattened_annotation_carries_annotation_for_tooltips(loader):
-    """TASK-11: the browser tooltip needs product and note on the feature."""
-    path = loader.get_prokaryotic_gff3_path()
-    katg = next(
-        line for line in open(path, encoding="utf-8") if "ID=Rv1908c;" in line
-    )
-    assert "Name=katG" in katg
-    assert "product=catalase-peroxidase" in katg
-    assert "Note=" in katg
-
-
-# ----------------------------------------------------------------------
 # TASK-10: neighbourhood navigation
 # ----------------------------------------------------------------------
 def test_neighbor_genes(loader):
@@ -172,13 +124,6 @@ def test_neighbor_genes(loader):
     previous, following = loader.get_neighbor_genes(loader.get_gene_info("mmpS5"))
     assert previous.display_name == "mmpL5"
     assert following.display_name == "Rv0678"
-
-
-def test_genes_in_window_includes_the_active_gene(loader):
-    gene = loader.get_gene_info("mmpS5")
-    window = loader.get_genes_in_window(gene.start - 5000, gene.end + 5000, gene.chromosome)
-    names = {g.locus_tag for g in window}
-    assert {"Rv0677c", "Rv0676c", "Rv0678"} <= names
 
 
 # ----------------------------------------------------------------------

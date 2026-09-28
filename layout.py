@@ -1,5 +1,5 @@
 """
-Static layout, branding and modal content for the MtbRx.
+Static layout, branding and modal content for the DR-TBAtlas.
 
 Institutional identity, attribution and citation material live here so that
 they are defined once and reused by the header and the footer (TASK-15).
@@ -12,7 +12,8 @@ from dash import dcc, html
 
 from data_utils import FIRST_LINE_DRUGS, GeneInfo
 
-APP_VERSION = "1.2.0"
+APP_NAME = "DR-TBAtlas"
+APP_VERSION = "1.3.0"
 
 # --- Institutional identity -------------------------------------------------
 LAPAM_NAME = "Laboratory of Applied Research in Mycobacteria (LaPAM)"
@@ -25,7 +26,7 @@ ATTRIBUTION = (
 )
 
 # --- Repositories and licence ----------------------------------------------
-PROJECT_REPO_URL = "https://github.com/falatfernando/mtbrx"
+PROJECT_REPO_URL = "https://github.com/falatfernando/dr-tbatlas"
 PERSONAL_GITHUB_URL = "https://github.com/falatfernando"
 # Set to the laboratory's GitHub organisation to surface a second repository
 # icon in the header and footer.
@@ -39,13 +40,13 @@ DOI_URL = f"https://doi.org/{DOI}"
 CITATION_YEAR = "2026"
 CITATION_TEXT = (
     f"Falat Rangel, F., & Guimarães, A. M. de S. ({CITATION_YEAR}). "
-    f"MtbRx: an interactive web-based interface for visual exploration of the "
+    f"DR-TBAtlas: an interactive web-based interface for visual exploration of the "
     f"WHO Mycobacterium tuberculosis drug resistance catalogue (Version {APP_VERSION}) "
     f"[Computer software]. Zenodo. {DOI_URL}"
 )
-CITATION_BIBTEX = f"""@software{{falat_mtbrx,
+CITATION_BIBTEX = f"""@software{{falat_drtbatlas,
   author    = {{Falat Rangel, Fernando and Guimar\\~aes, Ana Marcia de S\\'a}},
-  title     = {{MtbRx: an interactive web-based interface for visual exploration
+  title     = {{DR-TBAtlas: an interactive web-based interface for visual exploration
                of the WHO \\emph{{Mycobacterium tuberculosis}} drug resistance catalogue}},
   version   = {{{APP_VERSION}}},
   year      = {{{CITATION_YEAR}}},
@@ -128,7 +129,7 @@ def usp_mark(app, height: int = 38) -> html.A:
 def _github_links(app, icon_height: int = 22) -> List[dbc.NavItem]:
     """Repository links for the header."""
     links = [
-        (PROJECT_REPO_URL, "code.png", "MtbRx source code"),
+        (PROJECT_REPO_URL, "code.png", "DR-TBAtlas source code"),
         (PERSONAL_GITHUB_URL, "github.png", "Developer profile on GitHub"),
     ]
     if LAB_GITHUB_URL:
@@ -221,7 +222,7 @@ def navbar(app) -> dbc.Navbar:
     )
 
 
-def hero_search() -> html.Div:
+def hero_search(app) -> html.Div:
     """
     Hero section with the search form.
 
@@ -232,10 +233,16 @@ def hero_search() -> html.Div:
         dbc.Container([
             dbc.Row([
                 dbc.Col([
-                    html.H1([
-                        dbc.Badge("Mtb", className="badge-mtb me-1"),
-                        "Rx",
-                    ], className="display-5 fw-bold mb-3"),
+                    # The logo carries the wordmark, so its alt text is the
+                    # heading's accessible name.
+                    html.H1(
+                        html.Img(
+                            src=app.get_asset_url("dr-tbatlas-logo.png"),
+                            alt=APP_NAME,
+                            className="hero-logo",
+                        ),
+                        className="mb-3",
+                    ),
                     html.P([
                         "Explore ",
                         html.I("M. tuberculosis"),
@@ -489,7 +496,7 @@ def cite_modal() -> dbc.Modal:
         ])),
         dbc.ModalBody([
             html.P(
-                "If MtbRx supported your work, please cite the software and "
+                "If DR-TBAtlas supported your work, please cite the software and "
                 "the underlying data sources.",
                 className="text-muted small",
             ),
@@ -593,7 +600,7 @@ def footer(app) -> html.Footer:
                 ], className="d-flex align-items-center gap-4 mb-3 flex-wrap"),
                 html.P(ATTRIBUTION, className="fw-semibold mb-2 footer-attribution"),
                 html.P([
-                    f"MtbRx v{APP_VERSION} · ",
+                    f"DR-TBAtlas v{APP_VERSION} · ",
                     html.A(
                         dbc.Badge(LICENSE_NAME, className="badge-license"),
                         href=LICENSE_URL,
