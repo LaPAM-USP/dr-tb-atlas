@@ -34,6 +34,33 @@ DR-TBAtlas is a web-based genomic explorer for *Mycobacterium tuberculosis*, des
 - **Catalogue Summary**: Per-gene and per-drug counts by tier, confidence grading and loss of function, with aggregate totals
 - **Drill-down Details**: Explore all nucleotide changes for each mutation, including multi-kilobase indel alleles
 
+## Desktop App (no command line)
+
+Ready-to-run versions for Windows, macOS and Linux are attached to each
+[GitHub Release](https://github.com/falatfernando/dr-tbatlas/releases).
+Download the file for your system, unzip it and double-click **DR-TBAtlas**:
+a small window opens and the explorer appears in your web browser. Step-by-step
+instructions, including the one-time security prompt on Windows and macOS,
+are on the release page.
+
+### Building the desktop app
+
+The executables are made with [PyInstaller](https://pyinstaller.org) from
+`launcher.py`, which starts the server, opens the browser and shows a small
+control window. PyInstaller builds only for the system it runs on, so
+`.github/workflows/release.yml` builds every platform on GitHub Actions:
+pushing a version tag (`git tag 1.4.0 && git push origin 1.4.0`) creates a draft
+release with all builds attached. To build locally:
+
+```bash
+pip install -r requirements.txt -r packaging/requirements-build.txt
+pyinstaller packaging/drtbatlas.spec
+```
+
+The result is in `dist/`. The packaged app writes its genome browser tracks
+and `launcher.log` to a per-user cache folder (`%LOCALAPPDATA%\DR-TBAtlas`,
+`~/Library/Caches/DR-TBAtlas` or `~/.cache/DR-TBAtlas`) instead of `data/`.
+
 ## Installation
 
 ### Prerequisites
@@ -141,6 +168,7 @@ Gene on - strand:
 ```
 dr-tbatlas/
 ├── app.py                      # Dash application and callbacks
+├── launcher.py                 # Desktop app entry point: server, browser and control window
 ├── layout.py                   # Static layout, branding, modals and citation
 ├── genome_view.py              # Genome browser card, controls and sequence panel
 ├── browser_tracks.py           # JBrowse track files, text index and configuration
@@ -157,6 +185,7 @@ dr-tbatlas/
 │   ├── favicon.ico            # Browser tab icon
 │   ├── lapam.png              # Laboratory logo
 │   └── usp.png                # Optional: USP crest, shown in the footer when present
+├── packaging/                  # PyInstaller spec, build requirements and release notes
 ├── tests/                      # pytest suite
 └── data/
     ├── h37rv.gff3             # Genome annotation

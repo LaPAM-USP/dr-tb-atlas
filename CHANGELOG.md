@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-10-06
+
+### Added
+- **Desktop app for Windows, macOS and Linux.** `launcher.py` starts the
+  server, opens the explorer in the default browser and shows a small window
+  to reopen or quit it; `packaging/drtbatlas.spec` bundles it with PyInstaller
+  into a double-click executable that needs no Python installation.
+- `.github/workflows/release.yml` builds and smoke-tests every platform on
+  GitHub Actions and attaches the builds to a draft release for version tags.
+
+### Changed
+- The genome browser track folder can be moved with the
+  `DRTBATLAS_TRACKS_DIR` environment variable; the desktop app keeps it in a
+  per-user cache, since its own folder may be read-only.
+
 ## [1.3.0] - 2026-09-28
 
 ### Changed

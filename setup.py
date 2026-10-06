@@ -5,12 +5,13 @@ with open("requirements.txt") as f:
 
 setup(
     name="dr-tbatlas",
-    version="1.3.0",
+    version="1.4.0",
     author="Fernando Falat",
     author_email="fernandofalat@proton.me",
     description="A web-based genomic explorer for Mycobacterium tuberculosis drug resistance mutations using the WHO catalogue.",
     py_modules=[
         "app",
+        "launcher",
         "data_utils",
         "coordinate_calculator",
         "search_utils",
