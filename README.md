@@ -49,7 +49,7 @@ The executables are made with [PyInstaller](https://pyinstaller.org) from
 `launcher.py`, which starts the server, opens the browser and shows a small
 control window. PyInstaller builds only for the system it runs on, so
 `.github/workflows/release.yml` builds every platform on GitHub Actions:
-pushing a version tag (`git tag v1.4.0 && git push --tags`) creates a draft
+pushing a version tag (`git tag 1.4.0 && git push origin 1.4.0`) creates a draft
 release with all builds attached. To build locally:
 
 ```bash

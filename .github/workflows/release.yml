@@ -2,13 +2,14 @@ name: Desktop builds
 
 # Builds the double-click desktop app for each platform (see
 # packaging/drtbatlas.spec). Pull requests that touch the packaging upload the
-# builds as workflow artifacts; pushing a version tag (e.g. v1.4.0) also
+# builds as workflow artifacts; pushing a version tag (e.g. 1.4.0) also
 # attaches them to a draft GitHub Release for review before publishing.
 
 on:
   push:
     tags:
-      - 'v*'
+      - '[0-9]*'
+      - 'v[0-9]*'
   pull_request:
     paths:
       - 'launcher.py'
