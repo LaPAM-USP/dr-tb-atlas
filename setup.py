@@ -11,6 +11,7 @@ setup(
     description="A web-based genomic explorer for Mycobacterium tuberculosis drug resistance mutations using the WHO catalogue.",
     py_modules=[
         "app",
+        "launcher",
         "data_utils",
         "coordinate_calculator",
         "search_utils",

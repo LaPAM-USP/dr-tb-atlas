@@ -28,8 +28,12 @@ data_loader.load_gff3()
 data_loader.load_catalogue()
 data_loader.load_genomic_coordinates()
 # Flattened annotation and the derived catalogue, GC and search tracks used
-# by the genome browser (TASK-09).
-browser = browser_tracks.BrowserTracks(data_loader).build()
+# by the genome browser (TASK-09). The desktop launcher moves them to a
+# per-user cache, since a packaged app's own folder may be read-only.
+TRACKS_DIR = os.environ.get("DRTBATLAS_TRACKS_DIR") or os.path.join(
+    DATA_DIR, browser_tracks.TRACKS_DIRNAME
+)
+browser = browser_tracks.BrowserTracks(data_loader, tracks_dir=TRACKS_DIR).build()
 
 coord_calculator = CoordinateCalculator(data_loader)
 
@@ -56,6 +60,9 @@ server = app.server
 # Flask route to serve data files for JBrowse
 @server.route('/data/<path:path>')
 def serve_data(path):
+    tracks_prefix = browser_tracks.TRACKS_DIRNAME + "/"
+    if path.startswith(tracks_prefix):
+        return send_from_directory(TRACKS_DIR, path[len(tracks_prefix):])
     return send_from_directory(DATA_DIR, path)
 
 
